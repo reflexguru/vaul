@@ -22,7 +22,7 @@ import { DrawerDirection } from './types';
 import { useControllableState } from './use-controllable-state';
 import { useScaleBackground } from './use-scale-background';
 import { usePositionFixed } from './use-position-fixed';
-import { isAndroid, isIOS, isMobileFirefox } from './browser';
+import { isIOS } from './browser';
 
 export interface WithFadeFromProps {
   /**
@@ -208,7 +208,6 @@ export function Root({
   const pointerStart = React.useRef(0);
   const keyboardIsOpen = React.useRef(false);
   const shouldAnimate = React.useRef(!defaultOpen);
-  const previousDiffFromInitial = React.useRef(0);
   const drawerRef = React.useRef<HTMLDivElement>(null);
   const drawerHeightRef = React.useRef(drawerRef.current?.getBoundingClientRect().height || 0);
   const drawerWidthRef = React.useRef(drawerRef.current?.getBoundingClientRect().width || 0);
@@ -474,64 +473,92 @@ export function Root({
   }, []);
 
   React.useEffect(() => {
-    function onVisualViewportChange() {
-      if (!drawerRef.current || !repositionInputs) return;
+    if (!repositionInputs) return;
 
-      const focusedElement = document.activeElement as HTMLElement;
-      if (isInput(focusedElement) || keyboardIsOpen.current) {
-        const visualViewportHeight = window.visualViewport?.height || 0;
-        const totalHeight = window.innerHeight;
-        const drawerHeight = drawerRef.current.getBoundingClientRect().height || 0;
-        const offsetFromTop = drawerRef.current.getBoundingClientRect().top;
-        // This is the height of the keyboard
-        let diffFromInitial = drawerHeight + offsetFromTop - visualViewportHeight;
-        // Adjust drawer height only if it's tall enough
-        const isTallEnough = drawerHeight > totalHeight * 0.8;
+    const vv = window.visualViewport;
+    let rafId: number | null = null;
 
-        if (!initialDrawerHeight.current) {
-          initialDrawerHeight.current = drawerHeight;
-        }
+    const applyLayout = () => {
+      if (!drawerRef.current) return;
 
-        // visualViewport height may change due to somq e subtle changes to the keyboard. Checking if the height changed by 60 or more will make sure that they keyboard really changed its open state.
-        if (Math.abs(previousDiffFromInitial.current - diffFromInitial) > 60) {
-          keyboardIsOpen.current = !keyboardIsOpen.current;
-        }
+      const focusedElement = document.activeElement as HTMLElement | null;
+      const isFocusedInput = !!focusedElement && isInput(focusedElement);
 
-        if (snapPoints && snapPoints.length > 0 && snapPointsOffset && activeSnapPointIndex) {
-          const activeSnapPointHeight = snapPointsOffset[activeSnapPointIndex] || 0;
-          diffFromInitial += activeSnapPointHeight;
-        }
-        previousDiffFromInitial.current = diffFromInitial;
-        // We don't have to change the height if the input is in view, when we are here we are in the opened keyboard state so we can correctly check if the input is in view
-        if (drawerHeight > visualViewportHeight || keyboardIsOpen.current) {
-          const height = drawerRef.current.getBoundingClientRect().height;
-          let newDrawerHeight = height;
+      const layoutHeight = window.innerHeight;
+      const vvHeight = vv?.height ?? layoutHeight;
+      const vvOffsetTop = vv?.offsetTop ?? 0;
 
-          if (height > visualViewportHeight) {
-            newDrawerHeight = visualViewportHeight - (isTallEnough ? offsetFromTop : WINDOW_TOP_OFFSET);
-          }
-          // When fixed, don't move the drawer upwards if there's space, but rather only change it's height so it's fully scrollable when the keyboard is open
-          if (fixed) {
-            drawerRef.current.style.height = `${height - Math.max(diffFromInitial, 0)}px`;
-          } else {
-            drawerRef.current.style.height = `${Math.max(newDrawerHeight, visualViewportHeight - offsetFromTop)}px`;
-          }
-        } else if (!isMobileFirefox() && !isAndroid()) {
-          drawerRef.current.style.height = `${initialDrawerHeight.current}px`;
-        }
+      // Amount of the layout viewport obscured at the bottom (e.g., by the keyboard)
+      const occludedByKeyboard = Math.max(layoutHeight - (vvHeight + vvOffsetTop), 0);
 
-        if (snapPoints && snapPoints.length > 0 && !keyboardIsOpen.current) {
-          drawerRef.current.style.bottom = `0px`;
-        } else {
-          // Negative bottom value would never make sense
-          drawerRef.current.style.bottom = `${Math.max(diffFromInitial, 0)}px`;
-        }
+      const rect = drawerRef.current.getBoundingClientRect();
+      const offsetFromTop = rect.top;
+      const currentHeight = rect.height || 0;
+
+      if (!initialDrawerHeight.current) {
+        initialDrawerHeight.current = currentHeight;
       }
-    }
 
-    window.visualViewport?.addEventListener('resize', onVisualViewportChange);
-    return () => window.visualViewport?.removeEventListener('resize', onVisualViewportChange);
-  }, [activeSnapPointIndex, snapPoints, snapPointsOffset]);
+      // Debounced/open detection with hysteresis to avoid flicker
+      const thresholdOpen = 20;
+      const thresholdClose = 8;
+      const wasOpen = keyboardIsOpen.current;
+      const nowOpen =
+        occludedByKeyboard > thresholdOpen ||
+        (wasOpen && occludedByKeyboard > thresholdClose) ||
+        (isFocusedInput && occludedByKeyboard > 0);
+      keyboardIsOpen.current = nowOpen;
+
+      // Account for active snap offset when computing how much to lift
+      let activeSnapOffset = 0;
+      if (snapPoints && snapPoints.length > 0 && snapPointsOffset && activeSnapPointIndex != null) {
+        activeSnapOffset = snapPointsOffset[activeSnapPointIndex] || 0;
+      }
+
+      if (nowOpen) {
+        // Lift drawer above the keyboard
+        const lift = Math.max(occludedByKeyboard - activeSnapOffset, 0);
+        drawerRef.current.style.bottom = `${lift}px`;
+
+        // Available height for the drawer within the visible viewport
+        const available = Math.max(vvHeight - offsetFromTop, 0);
+
+        if (fixed) {
+          // Keep position, only shrink height
+          const newHeight = Math.max(currentHeight - occludedByKeyboard, 0);
+          drawerRef.current.style.height = `${newHeight}px`;
+        } else {
+          // Fit within visual viewport
+          const targetHeight = Math.min(currentHeight, available);
+          drawerRef.current.style.height = `${targetHeight}px`;
+        }
+      } else {
+        // Restore when keyboard closed
+        drawerRef.current.style.bottom = snapPoints && snapPoints.length > 0 ? '0px' : '0px';
+        drawerRef.current.style.height = `${initialDrawerHeight.current}px`;
+      }
+    };
+
+    const schedule = () => {
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(applyLayout);
+    };
+
+    schedule();
+
+    vv?.addEventListener('resize', schedule);
+    vv?.addEventListener('scroll', schedule);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+
+    return () => {
+      if (rafId != null) window.cancelAnimationFrame(rafId);
+      vv?.removeEventListener('resize', schedule);
+      vv?.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('orientationchange', schedule);
+    };
+  }, [activeSnapPointIndex, snapPoints, snapPointsOffset, repositionInputs, fixed]);
 
   function closeDrawer(fromWithin?: boolean) {
     cancelDrag();
@@ -737,13 +764,13 @@ export function Root({
   }
 
   React.useEffect(() => {
-    if (!modal) {
+    if (!modal && isOpen) {
       // Need to do this manually unfortunately
       window.requestAnimationFrame(() => {
         document.body.style.pointerEvents = 'auto';
       });
     }
-  }, [modal]);
+  }, [modal, isOpen]);
 
   return (
     <DialogPrimitive.Root
