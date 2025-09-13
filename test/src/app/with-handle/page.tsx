@@ -4,33 +4,20 @@ import { clsx } from 'clsx';
 import { useState } from 'react';
 import { Drawer } from 'vaul';
 
-const snapPoints = ['148px', '355px'];
-
 export default function Page() {
-  const [snap, setSnap] = useState<number | string | null>(snapPoints[0]);
-
-  const activeSnapPointIndex = snapPoints.indexOf(snap as string);
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="w-screen h-screen bg-white p-8 flex justify-center items-center">
-      <div data-testid="active-snap-index">{activeSnapPointIndex}</div>
-      <Drawer.Root open snapPoints={snapPoints} activeSnapPoint={snap} setActiveSnapPoint={setSnap}>
-        <Drawer.Trigger asChild>
-          <button data-testid="trigger">Open Drawer</button>
-        </Drawer.Trigger>
+      <Drawer.Root open={open} onOpenChange={setOpen}>
+        <button data-testid="trigger" onClick={() => setOpen(true)}>
+          Open Drawer
+        </button>
         <Drawer.Overlay className="fixed inset-0 bg-black/40" />
         <Drawer.Portal>
-          <Drawer.Content
-            data-testid="content"
-            className="fixed flex flex-col bg-white border border-gray-200 border-b-none rounded-t-[10px] bottom-0 left-0 right-0 h-full max-h-[97%] mx-[-1px]"
-          >
+          <Drawer.Content data-testid="content" className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[10px] p-2">
             <Drawer.Handle data-testid="handle" className="mb-8 mt-2" />
-            <div
-              className={clsx('flex flex-col max-w-md mx-auto w-full p-4 pt-5', {
-                'overflow-y-auto': snap === 1,
-                'overflow-hidden': snap !== 1,
-              })}
-            >
+            <div className={clsx('flex flex-col max-w-md mx-auto w-full p-4 pt-5')}>
               <div className="flex items-center">
                 <svg
                   className="text-yellow-400 h-5 w-5 flex-shrink-0"
