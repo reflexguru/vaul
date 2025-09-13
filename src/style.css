@@ -3,7 +3,7 @@
 [data-simple-overlay] {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-bg, rgba(0, 0, 0, 0.45));
   opacity: 0;
   transition: opacity 300ms ease;
   pointer-events: none;
@@ -15,14 +15,21 @@
   pointer-events: auto;
 }
 
+/* Overlay animation via explicit animating flag */
+[data-simple-overlay][data-animating='open'] {
+  animation: simple-overlay-in 300ms ease-out forwards;
+}
+[data-simple-overlay][data-animating='closed'] {
+  animation: simple-overlay-out 300ms ease forwards;
+}
+
 [data-simple-drawer] {
   position: fixed;
   background: var(--drawer-bg, #fff);
   color: var(--drawer-fg, inherit);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
-  max-height: var(--drawer-max-height, 90vh);
+  max-height: var(--drawer-max-height, 90dvh);
   max-width: var(--drawer-max-width, 100vw);
   transition: transform 300ms ease-in-out;
   will-change: transform;
@@ -65,14 +72,14 @@
 }
 
 [data-simple-drawer][data-direction='top'][data-animating='open'] {
-  animation: simple-open-top 420ms ease-in-out;
+  animation: simple-open-top 420ms ease-out;
 }
 [data-simple-drawer][data-direction='top'][data-animating='closed'] {
   animation: simple-close-top 260ms ease-out;
 }
 /* Radix state */
 [data-simple-drawer][data-direction='top'][data-state='open']:not([data-opened='true']) {
-  animation: simple-open-top 420ms ease-in-out;
+  animation: simple-open-top 420ms ease-out;
 }
 [data-simple-drawer][data-direction='top'][data-state='closed'] {
   animation: none;
@@ -88,14 +95,14 @@
 }
 
 [data-simple-drawer][data-direction='left'][data-animating='open'] {
-  animation: simple-open-left 420ms ease-in-out;
+  animation: simple-open-left 420ms ease-out;
 }
 [data-simple-drawer][data-direction='left'][data-animating='closed'] {
   animation: simple-close-left 260ms ease-out;
 }
 /* Radix state */
 [data-simple-drawer][data-direction='left'][data-state='open']:not([data-opened='true']) {
-  animation: simple-open-left 420ms ease-in-out;
+  animation: simple-open-left 420ms ease-out;
 }
 [data-simple-drawer][data-direction='left'][data-state='closed'] {
   animation: none;
@@ -111,14 +118,14 @@
 }
 
 [data-simple-drawer][data-direction='right'][data-animating='open'] {
-  animation: simple-open-right 420ms ease-in-out;
+  animation: simple-open-right 420ms ease-out;
 }
 [data-simple-drawer][data-direction='right'][data-animating='closed'] {
   animation: simple-close-right 260ms ease-out;
 }
 /* Radix state */
 [data-simple-drawer][data-direction='right'][data-state='open']:not([data-opened='true']) {
-  animation: simple-open-right 420ms ease-in-out;
+  animation: simple-open-right 420ms ease-out;
 }
 [data-simple-drawer][data-direction='right'][data-state='closed'] {
   animation: none;
@@ -165,79 +172,117 @@
 @keyframes simple-open-bottom {
   0% {
     transform: translateY(100%);
+    opacity: 0;
   }
   60% {
     transform: translateY(-1%);
+    opacity: 1;
   }
   100% {
     transform: translateY(0);
+    opacity: 1;
   }
 }
 @keyframes simple-close-bottom {
   0% {
     transform: translateY(0);
+    opacity: 1;
   }
   100% {
     transform: translateY(100%);
+    opacity: 0;
   }
 }
 
 @keyframes simple-open-top {
   0% {
     transform: translateY(-100%);
+    opacity: 0;
   }
   60% {
     transform: translateY(1%);
+    opacity: 1;
   }
   100% {
     transform: translateY(0);
+    opacity: 1;
   }
 }
 @keyframes simple-close-top {
   0% {
     transform: translateY(0);
+    opacity: 1;
   }
   100% {
     transform: translateY(-100%);
+    opacity: 0;
   }
 }
 
 @keyframes simple-open-left {
   0% {
     transform: translateX(-100%);
+    opacity: 0;
   }
   60% {
     transform: translateX(1%);
+    opacity: 1;
   }
   100% {
     transform: translateX(0);
+    opacity: 1;
   }
 }
 @keyframes simple-close-left {
   0% {
     transform: translateX(0);
+    opacity: 1;
   }
   100% {
     transform: translateX(-100%);
+    opacity: 0;
   }
 }
 
 @keyframes simple-open-right {
   0% {
     transform: translateX(100%);
+    opacity: 0;
   }
   60% {
     transform: translateX(-1%);
+    opacity: 1;
   }
   100% {
     transform: translateX(0);
+    opacity: 1;
   }
 }
 @keyframes simple-close-right {
   0% {
     transform: translateX(0);
+    opacity: 1;
   }
   100% {
     transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes simple-overlay-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes simple-overlay-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
   }
 }

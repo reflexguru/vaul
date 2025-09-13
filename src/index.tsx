@@ -21,6 +21,7 @@ type RootProps = {
 
 type DrawerContextValue = {
   drawerRef: React.RefObject<HTMLDivElement>;
+  overlayRef: React.RefObject<HTMLDivElement>;
   direction: Direction;
   handleOnly: boolean;
   onPress: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -58,6 +59,7 @@ function Root({
   const [present, setPresent] = React.useState<boolean>(!!(defaultOpen ?? openProp));
 
   const drawerRef = React.useRef<HTMLDivElement>(null);
+  const overlayRef = React.useRef<HTMLDivElement>(null);
   const pointerStartRef = React.useRef<{ x: number; y: number } | null>(null);
   const dragStartTimeRef = React.useRef<number>(0);
   const isDraggingRef = React.useRef(false);
@@ -65,6 +67,8 @@ function Root({
   const axisIsVertical = direction === 'top' || direction === 'bottom';
   const closeSign = direction === 'bottom' || direction === 'right' ? 1 : -1;
   const animTimerRef = React.useRef<number | null>(null);
+  const isAnimatingRef = React.useRef<boolean>(false);
+  const presentHideTimerRef = React.useRef<number | null>(null);
 
   function resetTransform(withTransition = true) {
     const el = drawerRef.current;
@@ -78,6 +82,7 @@ function Root({
   }
 
   const onPress = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (isAnimatingRef.current) return;
     const target = event.currentTarget as HTMLElement;
     target.setPointerCapture(event.pointerId);
     pointerStartRef.current = { x: event.pageX, y: event.pageY };
@@ -88,6 +93,7 @@ function Root({
 
   const onDrag = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isAnimatingRef.current) return;
       if (!isDraggingRef.current || !pointerStartRef.current || !drawerRef.current) return;
       const start = pointerStartRef.current;
       const dx = event.pageX - start.x;
@@ -148,25 +154,59 @@ function Root({
       setPresent(true);
       // reset "opened" flag when we transition from closed to open
       const el = drawerRef.current;
-      if (el) {
-        el.removeAttribute('data-opened');
-      }
+      const ov = overlayRef.current;
+      if (el) el.removeAttribute('data-opened');
+      if (ov) ov.setAttribute('data-animating', 'open');
+      isAnimatingRef.current = true;
+      window.setTimeout(() => {
+        if (ov) ov.removeAttribute('data-animating');
+        isAnimatingRef.current = false;
+      }, 300);
       return;
     }
     const el = drawerRef.current;
+    const ov = overlayRef.current;
     if (animTimerRef.current) {
       window.clearTimeout(animTimerRef.current);
       animTimerRef.current = null;
     }
+    const startClosedAnim = () => {
+      const node = drawerRef.current;
+      if (!node) return;
+      node.removeAttribute('data-dragging');
+      isDraggingRef.current = false;
+      node.setAttribute('data-animating', 'closed');
+    };
+
     if (el) {
-      el.setAttribute('data-animating', 'closed');
+      // Ensure drag state is cleared so animations are not suppressed by CSS
+      startClosedAnim();
+      isAnimatingRef.current = true;
       animTimerRef.current = window.setTimeout(() => {
         el.removeAttribute('data-animating');
         setPresent(false);
         animTimerRef.current = null;
+        isAnimatingRef.current = false;
       }, 260);
     } else {
-      setPresent(false);
+      // Keep present for the duration of the close animation even if ref not yet available
+      if (presentHideTimerRef.current) window.clearTimeout(presentHideTimerRef.current);
+      // Try to set closed anim on the next frame when ref likely mounted
+      window.requestAnimationFrame(startClosedAnim);
+      isAnimatingRef.current = true;
+      presentHideTimerRef.current = window.setTimeout(() => {
+        setPresent(false);
+        isAnimatingRef.current = false;
+        presentHideTimerRef.current = null;
+      }, 260);
+    }
+    if (ov) {
+      ov.setAttribute('data-animating', 'closed');
+      isAnimatingRef.current = true;
+      window.setTimeout(() => {
+        if (ov) ov.removeAttribute('data-animating');
+        isAnimatingRef.current = false;
+      }, 300);
     }
   }, [isOpen]);
 
@@ -182,10 +222,12 @@ function Root({
     // If already marked opened, skip re-playing open animation
     if (el.getAttribute('data-opened') === 'true') return;
     el.setAttribute('data-animating', 'open');
+    isAnimatingRef.current = true;
     animTimerRef.current = window.setTimeout(() => {
       el.removeAttribute('data-animating');
       el.setAttribute('data-opened', 'true');
       animTimerRef.current = null;
+      isAnimatingRef.current = false;
     }, 420);
   }, [isOpen, present]);
 
@@ -199,7 +241,7 @@ function Root({
         setIsOpen(o);
       }}
     >
-      <DrawerCtx.Provider value={{ drawerRef, direction, handleOnly, onPress, onDrag, onRelease, isOpen }}>
+      <DrawerCtx.Provider value={{ drawerRef, overlayRef, direction, handleOnly, onPress, onDrag, onRelease, isOpen }}>
         {children}
       </DrawerCtx.Provider>
     </DialogPrimitive.Root>
@@ -207,7 +249,8 @@ function Root({
 }
 
 function Overlay(props: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>) {
-  return <DialogPrimitive.Overlay forceMount data-simple-overlay {...props} />;
+  const ctx = useDrawerCtx();
+  return <DialogPrimitive.Overlay ref={ctx.overlayRef as any} forceMount data-simple-overlay {...props} />;
 }
 
 type ContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {

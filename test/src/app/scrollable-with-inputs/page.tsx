@@ -1,13 +1,16 @@
 'use client';
 
 import { Drawer } from 'vaul';
+import { useState } from 'react';
 
 export default function Page() {
+  const [open, setOpen] = useState(false);
+
   return (
     <div className="w-screen h-screen bg-white p-8 flex justify-center items-center" data-vaul-drawer-wrapper="">
-      <Drawer.Root>
+      <Drawer.Root open={open} onOpenChange={setOpen}>
         <Drawer.Trigger asChild>
-          <button>Open Drawer</button>
+          <button onClick={() => setOpen(true)}>Open Drawer</button>
         </Drawer.Trigger>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 bg-black/40" />
