@@ -3,6 +3,7 @@ import { DrawerDirection } from './types';
 
 interface DrawerContextValue {
   drawerRef: React.RefObject<HTMLDivElement>;
+  drawerInnerRef?: React.RefObject<HTMLDivElement>;
   overlayRef: React.RefObject<HTMLDivElement>;
   onPress: (event: React.PointerEvent<HTMLDivElement>) => void;
   onRelease: (event: React.PointerEvent<HTMLDivElement> | null) => void;
@@ -32,10 +33,17 @@ interface DrawerContextValue {
   container?: HTMLElement | null;
   autoFocus?: boolean;
   shouldAnimate?: React.RefObject<boolean>;
+  animateOpenClose?: boolean;
+  // visual viewport / keyboard state
+  occludedByKeyboard?: number;
+  visualViewportHeight?: number;
+  visualViewportOffsetTop?: number;
+  layoutViewportHeight?: number;
 }
 
 export const DrawerContext = React.createContext<DrawerContextValue>({
   drawerRef: { current: null },
+  drawerInnerRef: { current: null },
   overlayRef: { current: null },
   onPress: () => {},
   onRelease: () => {},
@@ -64,6 +72,11 @@ export const DrawerContext = React.createContext<DrawerContextValue>({
   noBodyStyles: false,
   container: null,
   autoFocus: false,
+  animateOpenClose: false,
+  occludedByKeyboard: 0,
+  visualViewportHeight: 0,
+  visualViewportOffsetTop: 0,
+  layoutViewportHeight: 0,
 });
 
 export const useDrawerContext = () => {

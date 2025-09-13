@@ -23,6 +23,7 @@ import { useControllableState } from './use-controllable-state';
 import { useScaleBackground } from './use-scale-background';
 import { usePositionFixed } from './use-position-fixed';
 import { isIOS } from './browser';
+import { useKeyboardViewport } from './use-keyboard-viewport';
 
 export interface WithFadeFromProps {
   /**
@@ -196,9 +197,12 @@ export function Root({
     },
   });
   const [hasBeenOpened, setHasBeenOpened] = React.useState<boolean>(false);
+  const [animateOpenClose, setAnimateOpenClose] = React.useState<boolean>(false);
   const [isDragging, setIsDragging] = React.useState<boolean>(false);
   const [justReleased, setJustReleased] = React.useState<boolean>(false);
   const overlayRef = React.useRef<HTMLDivElement>(null);
+  const [portalContainerEl, setPortalContainerEl] = React.useState<HTMLDivElement | null>(null);
+  const drawerInnerRef = React.useRef<HTMLDivElement>(null);
   const openTime = React.useRef<Date | null>(null);
   const dragStartTime = React.useRef<Date | null>(null);
   const dragEndTime = React.useRef<Date | null>(null);
@@ -241,8 +245,7 @@ export function Root({
   });
 
   usePreventScroll({
-    isDisabled:
-      !isOpen || isDragging || !modal || justReleased || !hasBeenOpened || !repositionInputs || !disablePreventScroll,
+    isDisabled: !isOpen || isDragging || !modal || !hasBeenOpened || !disablePreventScroll,
   });
 
   const { restorePositionSetting } = usePositionFixed({
@@ -467,98 +470,73 @@ export function Root({
   }
 
   React.useEffect(() => {
-    window.requestAnimationFrame(() => {
-      shouldAnimate.current = true;
-    });
+    // Avoid toggling this repeatedly; only set once on mount
+    shouldAnimate.current = true;
   }, []);
 
+  // Centralized keyboard/viewport state
+  const { occludedByKeyboard, visualViewportHeight, visualViewportOffsetTop, layoutViewportHeight, isKeyboardOpen } =
+    useKeyboardViewport({ enabled: repositionInputs });
+
+  // Visual-viewport anchored sizing using max-height on inner wrapper
   React.useEffect(() => {
-    if (!repositionInputs) return;
+    const drawerEl = drawerRef.current;
+    if (!drawerEl || !repositionInputs) return;
 
-    const vv = window.visualViewport;
-    let rafId: number | null = null;
+    const prevTransition = drawerEl.style.transition;
+    const prevWillChange = drawerEl.style.willChange as string;
+    // Во время клавиатурной раскладки не проигрываем анимации
+    drawerEl.style.transition = 'none';
+    drawerEl.style.willChange = 'max-height, inset';
 
-    const applyLayout = () => {
-      if (!drawerRef.current) return;
+    const rect = drawerEl.getBoundingClientRect();
+    const offsetFromTop = rect.top;
 
-      const focusedElement = document.activeElement as HTMLElement | null;
-      const isFocusedInput = !!focusedElement && isInput(focusedElement);
+    if (!initialDrawerHeight.current) {
+      initialDrawerHeight.current = rect.height || 0;
+    }
 
-      const layoutHeight = window.innerHeight;
-      const vvHeight = vv?.height ?? layoutHeight;
-      const vvOffsetTop = vv?.offsetTop ?? 0;
+    // inner wrapper sizing
+    const inner = drawerInnerRef.current ?? drawerEl;
 
-      // Amount of the layout viewport obscured at the bottom (e.g., by the keyboard)
-      const occludedByKeyboard = Math.max(layoutHeight - (vvHeight + vvOffsetTop), 0);
+    let activeSnapOffset = 0;
+    if (snapPoints && snapPoints.length > 0 && snapPointsOffset && activeSnapPointIndex != null) {
+      activeSnapOffset = snapPointsOffset[activeSnapPointIndex] || 0;
+    }
 
-      const rect = drawerRef.current.getBoundingClientRect();
-      const offsetFromTop = rect.top;
-      const currentHeight = rect.height || 0;
+    keyboardIsOpen.current = isKeyboardOpen;
 
-      if (!initialDrawerHeight.current) {
-        initialDrawerHeight.current = currentHeight;
+    if (isKeyboardOpen) {
+      const available = Math.max(visualViewportHeight - offsetFromTop, 0);
+      const targetMaxHeight = Math.min(initialDrawerHeight.current, available);
+      inner.style.maxHeight = `${targetMaxHeight}px`;
+
+      const lift = Math.max(occludedByKeyboard - activeSnapOffset, 0);
+      if (drawerEl.style.bottom !== `${lift}px`) drawerEl.style.bottom = `${lift}px`;
+    } else {
+      if (inner.style.maxHeight) inner.style.maxHeight = '';
+      // Возвращать в 0px с плавной анимацией можно только если действительно закрывается drawer, иначе без анимаций
+      if (drawerEl.style.bottom !== '0px') {
+        drawerEl.style.bottom = '0px';
       }
+    }
 
-      // Debounced/open detection with hysteresis to avoid flicker
-      const thresholdOpen = 20;
-      const thresholdClose = 8;
-      const wasOpen = keyboardIsOpen.current;
-      const nowOpen =
-        occludedByKeyboard > thresholdOpen ||
-        (wasOpen && occludedByKeyboard > thresholdClose) ||
-        (isFocusedInput && occludedByKeyboard > 0);
-      keyboardIsOpen.current = nowOpen;
-
-      // Account for active snap offset when computing how much to lift
-      let activeSnapOffset = 0;
-      if (snapPoints && snapPoints.length > 0 && snapPointsOffset && activeSnapPointIndex != null) {
-        activeSnapOffset = snapPointsOffset[activeSnapPointIndex] || 0;
-      }
-
-      if (nowOpen) {
-        // Lift drawer above the keyboard
-        const lift = Math.max(occludedByKeyboard - activeSnapOffset, 0);
-        drawerRef.current.style.bottom = `${lift}px`;
-
-        // Available height for the drawer within the visible viewport
-        const available = Math.max(vvHeight - offsetFromTop, 0);
-
-        if (fixed) {
-          // Keep position, only shrink height
-          const newHeight = Math.max(currentHeight - occludedByKeyboard, 0);
-          drawerRef.current.style.height = `${newHeight}px`;
-        } else {
-          // Fit within visual viewport
-          const targetHeight = Math.min(currentHeight, available);
-          drawerRef.current.style.height = `${targetHeight}px`;
-        }
-      } else {
-        // Restore when keyboard closed
-        drawerRef.current.style.bottom = snapPoints && snapPoints.length > 0 ? '0px' : '0px';
-        drawerRef.current.style.height = `${initialDrawerHeight.current}px`;
-      }
-    };
-
-    const schedule = () => {
-      if (rafId != null) window.cancelAnimationFrame(rafId);
-      rafId = window.requestAnimationFrame(applyLayout);
-    };
-
-    schedule();
-
-    vv?.addEventListener('resize', schedule);
-    vv?.addEventListener('scroll', schedule);
-    window.addEventListener('resize', schedule);
-    window.addEventListener('orientationchange', schedule);
-
-    return () => {
-      if (rafId != null) window.cancelAnimationFrame(rafId);
-      vv?.removeEventListener('resize', schedule);
-      vv?.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
-      window.removeEventListener('orientationchange', schedule);
-    };
-  }, [activeSnapPointIndex, snapPoints, snapPointsOffset, repositionInputs, fixed]);
+    // Restore transition next frame
+    requestAnimationFrame(() => {
+      drawerEl.style.transition = prevTransition;
+      drawerEl.style.willChange = prevWillChange;
+    });
+  }, [
+    repositionInputs,
+    isKeyboardOpen,
+    occludedByKeyboard,
+    visualViewportHeight,
+    visualViewportOffsetTop,
+    layoutViewportHeight,
+    activeSnapPointIndex,
+    snapPoints,
+    snapPointsOffset,
+  ]);
 
   function closeDrawer(fromWithin?: boolean) {
     cancelDrag();
@@ -580,13 +558,22 @@ export function Root({
     const wrapper = document.querySelector('[data-vaul-drawer-wrapper]');
     const currentSwipeAmount = getTranslate(drawerRef.current, direction);
 
-    set(drawerRef.current, {
-      transform: 'translate3d(0, 0, 0)',
-      transition: `transform ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`,
-    });
+    if (animateOpenClose) {
+      set(drawerRef.current, {
+        transform: 'translate3d(0, 0, 0)',
+        transition: `transform ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`,
+      });
+    } else {
+      set(drawerRef.current, {
+        transform: 'translate3d(0, 0, 0)',
+        transition: 'none',
+      });
+    }
 
     set(overlayRef.current, {
-      transition: `opacity ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`,
+      transition: animateOpenClose
+        ? `opacity ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`
+        : 'none',
       opacity: '1',
     });
 
@@ -691,16 +678,20 @@ export function Root({
 
   React.useEffect(() => {
     // Trigger enter animation without using CSS animation
-    if (isOpen) {
-      set(document.documentElement, {
-        scrollBehavior: 'auto',
-      });
+    if (!isOpen) return;
 
-      openTime.current = new Date();
-    }
+    set(document.documentElement, {
+      scrollBehavior: 'auto',
+      overscrollBehavior: 'contain',
+    });
+
+    openTime.current = new Date();
+    setAnimateOpenClose(true);
 
     return () => {
+      setAnimateOpenClose(false);
       reset(document.documentElement, 'scrollBehavior');
+      reset(document.documentElement, 'overscrollBehavior');
     };
   }, [isOpen]);
 
@@ -714,7 +705,9 @@ export function Root({
     }
 
     set(drawerRef.current, {
-      transition: `transform ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`,
+      transition: animateOpenClose
+        ? `transform ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`
+        : 'none',
       transform: isVertical(direction)
         ? `scale(${scale}) translate3d(0, ${initialTranslate}px, 0)`
         : `scale(${scale}) translate3d(${initialTranslate}px, 0, 0)`,
@@ -755,7 +748,9 @@ export function Root({
 
     if (o) {
       set(drawerRef.current, {
-        transition: `transform ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`,
+        transition: animateOpenClose
+          ? `transform ${TRANSITIONS.DURATION}s cubic-bezier(${TRANSITIONS.EASE.join(',')})`
+          : 'none',
         transform: isVertical(direction)
           ? `scale(${scale}) translate3d(0, ${translate}px, 0)`
           : `scale(${scale}) translate3d(${translate}px, 0, 0)`,
@@ -794,6 +789,7 @@ export function Root({
           snapPoints,
           setActiveSnapPoint,
           drawerRef,
+          drawerInnerRef,
           overlayRef,
           onOpenChange,
           onPress,
@@ -819,6 +815,10 @@ export function Root({
           noBodyStyles,
           container,
           autoFocus,
+          occludedByKeyboard,
+          visualViewportHeight,
+          visualViewportOffsetTop,
+          layoutViewportHeight,
         }}
       >
         {children}
@@ -863,6 +863,7 @@ export const Content = React.forwardRef<HTMLDivElement, ContentProps>(function (
 ) {
   const {
     drawerRef,
+    drawerInnerRef,
     onPress,
     onRelease,
     onDrag,
@@ -1007,7 +1008,15 @@ export const Content = React.forwardRef<HTMLDivElement, ContentProps>(function (
           handleOnPointerUp(lastKnownPointerEventRef.current);
         }
       }}
-    />
+    >
+      <div
+        ref={drawerInnerRef}
+        data-vaul-drawer-inner=""
+        style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+      >
+        {rest.children}
+      </div>
+    </DialogPrimitive.Content>
   );
 });
 
@@ -1158,7 +1167,34 @@ export function Portal(props: PortalProps) {
   const context = useDrawerContext();
   const { container = context.container, ...portalProps } = props;
 
-  return <DialogPrimitive.Portal container={container} {...portalProps} />;
+  // If a custom container isn't provided, ensure we have a fixed viewport-anchored container
+  const localContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (container) return;
+    if (!localContainerRef.current) {
+      const el = document.createElement('div');
+      el.setAttribute('data-vaul-portal-container', '');
+      Object.assign(el.style, {
+        position: 'fixed',
+        inset: '0',
+        display: 'contents',
+        pointerEvents: 'auto',
+        zIndex: '2147483647',
+      });
+      document.body.appendChild(el);
+      localContainerRef.current = el;
+    }
+
+    return () => {
+      if (!container && localContainerRef.current) {
+        localContainerRef.current.remove();
+        localContainerRef.current = null;
+      }
+    };
+  }, [container]);
+
+  return <DialogPrimitive.Portal container={container ?? localContainerRef.current ?? undefined} {...portalProps} />;
 }
 
 export const Drawer = {
