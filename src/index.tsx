@@ -22,7 +22,7 @@ import { DrawerDirection } from './types';
 import { useControllableState } from './use-controllable-state';
 import { useScaleBackground } from './use-scale-background';
 import { usePositionFixed } from './use-position-fixed';
-import { isIOS, isMobileFirefox } from './browser';
+import { isAndroid, isIOS, isMobileFirefox } from './browser';
 
 export interface WithFadeFromProps {
   /**
@@ -440,15 +440,15 @@ export function Root({
         const scaleValue = Math.min(getScale() + percentageDragged * (1 - getScale()), 1);
         const borderRadiusValue = 8 - percentageDragged * 8;
 
-        const translateValue = Math.max(0, 14 - percentageDragged * 14);
+        const translatePercent = 1 - percentageDragged;
 
         set(
           wrapper,
           {
             borderRadius: `${borderRadiusValue}px`,
             transform: isVertical(direction)
-              ? `scale(${scaleValue}) translate3d(0, ${translateValue}px, 0)`
-              : `scale(${scaleValue}) translate3d(${translateValue}px, 0, 0)`,
+              ? `scale(${scaleValue}) translate3d(0, calc((env(safe-area-inset-top) + 14px) * ${translatePercent}), 0)`
+              : `scale(${scaleValue}) translate3d(calc((env(safe-area-inset-top) + 14px) * ${translatePercent}), 0, 0)`,
             transition: 'none',
           },
           true,
@@ -481,16 +481,16 @@ export function Root({
       if (isInput(focusedElement) || keyboardIsOpen.current) {
         const visualViewportHeight = window.visualViewport?.height || 0;
         const totalHeight = window.innerHeight;
-        // This is the height of the keyboard
-        let diffFromInitial = totalHeight - visualViewportHeight;
         const drawerHeight = drawerRef.current.getBoundingClientRect().height || 0;
+        const offsetFromTop = drawerRef.current.getBoundingClientRect().top;
+        // This is the height of the keyboard
+        let diffFromInitial = drawerHeight + offsetFromTop - visualViewportHeight;
         // Adjust drawer height only if it's tall enough
         const isTallEnough = drawerHeight > totalHeight * 0.8;
 
         if (!initialDrawerHeight.current) {
           initialDrawerHeight.current = drawerHeight;
         }
-        const offsetFromTop = drawerRef.current.getBoundingClientRect().top;
 
         // visualViewport height may change due to somq e subtle changes to the keyboard. Checking if the height changed by 60 or more will make sure that they keyboard really changed its open state.
         if (Math.abs(previousDiffFromInitial.current - diffFromInitial) > 60) {
@@ -516,7 +516,7 @@ export function Root({
           } else {
             drawerRef.current.style.height = `${Math.max(newDrawerHeight, visualViewportHeight - offsetFromTop)}px`;
           }
-        } else if (!isMobileFirefox()) {
+        } else if (!isMobileFirefox() && !isAndroid()) {
           drawerRef.current.style.height = `${initialDrawerHeight.current}px`;
         }
 
