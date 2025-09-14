@@ -2,7 +2,7 @@
 
 import { clsx } from 'clsx';
 import { useState } from 'react';
-import { Drawer } from 'vaul';
+import { Drawer } from '@reflexguru/vaul';
 
 export default function Page() {
   const [open, setOpen] = useState(false);

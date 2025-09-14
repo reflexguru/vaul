@@ -1,6 +1,6 @@
 {
   "name": "@reflexguru/vaul",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Drawer component for React. With some manually merged PRs.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

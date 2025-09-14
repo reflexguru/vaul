@@ -9,24 +9,22 @@
   pointer-events: none;
 }
 
-[data-state='open'] [data-simple-overlay],
 [data-simple-overlay][data-state='open'] {
   opacity: 1;
   pointer-events: auto;
 }
 
 /* Overlay animation via explicit animating flag */
-[data-simple-overlay][data-animating='open'] {
-  animation: simple-overlay-in 300ms ease-out forwards;
+[data-simple-overlay][data-state='open'] {
+  animation: simple-overlay-in 420ms ease-out forwards;
+  pointer-events: auto;
 }
 [data-simple-overlay][data-animating='closed'] {
-  animation: simple-overlay-out 300ms ease forwards;
+  animation: simple-overlay-out 300ms ease-out forwards;
 }
 
 [data-simple-drawer] {
   position: fixed;
-  background: var(--drawer-bg, #fff);
-  color: var(--drawer-fg, inherit);
   display: flex;
   flex-direction: column;
   max-height: var(--drawer-max-height, 90dvh);
@@ -34,7 +32,8 @@
   transition: transform 300ms ease-in-out;
   will-change: transform;
   overscroll-behavior: contain;
-  touch-action: none;
+  /* Allow both axes for pointer events; we restrict in JS */
+  touch-action: pan-y pan-x pinch-zoom;
 }
 
 [data-simple-drawer][data-direction='bottom'] {
@@ -48,14 +47,14 @@
 }
 
 [data-simple-drawer][data-direction='bottom'][data-animating='open'] {
-  animation: simple-open-bottom 420ms ease-in-out;
+  animation: simple-open-bottom 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='bottom'][data-animating='closed'] {
   animation: simple-close-bottom 260ms ease-out;
 }
 /* Also animate based on Radix state to support overlay click and initial mount */
-[data-simple-drawer][data-direction='bottom'][data-state='open']:not([data-opened='true']) {
-  animation: simple-open-bottom 420ms ease-in-out;
+[data-simple-drawer][data-direction='bottom'][data-state='open']:not([data-opened='true']):not([data-dragging='true']) {
+  animation: simple-open-bottom 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='bottom'][data-state='closed'] {
   animation: none;
@@ -72,14 +71,14 @@
 }
 
 [data-simple-drawer][data-direction='top'][data-animating='open'] {
-  animation: simple-open-top 420ms ease-out;
+  animation: simple-open-top 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='top'][data-animating='closed'] {
   animation: simple-close-top 260ms ease-out;
 }
 /* Radix state */
-[data-simple-drawer][data-direction='top'][data-state='open']:not([data-opened='true']) {
-  animation: simple-open-top 420ms ease-out;
+[data-simple-drawer][data-direction='top'][data-state='open']:not([data-opened='true']):not([data-dragging='true']) {
+  animation: simple-open-top 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='top'][data-state='closed'] {
   animation: none;
@@ -95,14 +94,14 @@
 }
 
 [data-simple-drawer][data-direction='left'][data-animating='open'] {
-  animation: simple-open-left 420ms ease-out;
+  animation: simple-open-left 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='left'][data-animating='closed'] {
   animation: simple-close-left 260ms ease-out;
 }
 /* Radix state */
-[data-simple-drawer][data-direction='left'][data-state='open']:not([data-opened='true']) {
-  animation: simple-open-left 420ms ease-out;
+[data-simple-drawer][data-direction='left'][data-state='open']:not([data-opened='true']):not([data-dragging='true']) {
+  animation: simple-open-left 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='left'][data-state='closed'] {
   animation: none;
@@ -118,14 +117,14 @@
 }
 
 [data-simple-drawer][data-direction='right'][data-animating='open'] {
-  animation: simple-open-right 420ms ease-out;
+  animation: simple-open-right 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='right'][data-animating='closed'] {
   animation: simple-close-right 260ms ease-out;
 }
 /* Radix state */
-[data-simple-drawer][data-direction='right'][data-state='open']:not([data-opened='true']) {
-  animation: simple-open-right 420ms ease-out;
+[data-simple-drawer][data-direction='right'][data-state='open']:not([data-opened='true']):not([data-dragging='true']) {
+  animation: simple-open-right 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 [data-simple-drawer][data-direction='right'][data-state='closed'] {
   animation: none;
@@ -142,7 +141,7 @@
   -webkit-overflow-scrolling: touch;
   flex: 1 1 auto;
   min-height: 0;
-  touch-action: auto;
+  touch-action: pan-y pinch-zoom;
 }
 
 [data-simple-handle] {
@@ -174,10 +173,6 @@
     transform: translateY(100%);
     opacity: 0;
   }
-  60% {
-    transform: translateY(-1%);
-    opacity: 1;
-  }
   100% {
     transform: translateY(0);
     opacity: 1;
@@ -198,10 +193,6 @@
   0% {
     transform: translateY(-100%);
     opacity: 0;
-  }
-  60% {
-    transform: translateY(1%);
-    opacity: 1;
   }
   100% {
     transform: translateY(0);
@@ -224,10 +215,6 @@
     transform: translateX(-100%);
     opacity: 0;
   }
-  60% {
-    transform: translateX(1%);
-    opacity: 1;
-  }
   100% {
     transform: translateX(0);
     opacity: 1;
@@ -248,10 +235,6 @@
   0% {
     transform: translateX(100%);
     opacity: 0;
-  }
-  60% {
-    transform: translateX(-1%);
-    opacity: 1;
   }
   100% {
     transform: translateX(0);

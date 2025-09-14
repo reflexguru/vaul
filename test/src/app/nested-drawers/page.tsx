@@ -1,6 +1,6 @@
 'use client';
 
-import { Drawer } from 'vaul';
+import { Drawer } from '@reflexguru/vaul';
 
 export default function Page() {
   return (
